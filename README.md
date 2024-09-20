@@ -5,7 +5,7 @@ Before delving into the details of the project files, please consider that this 
 - tensorflow 2.13.0
 - scipy 1.11.2
 - scikit-learn 1.3.0
-- pm4py 2.2.20.1
+- pm4py 2.7.11.11
 
 Please note that the list above is not comprehensive and there could be other requirements for running the project.
 
