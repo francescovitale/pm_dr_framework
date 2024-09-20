@@ -21,6 +21,7 @@ from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
 from tensorflow.keras import backend as K
 from sklearn.decomposition import PCA
 from sklearn.decomposition import KernelPCA
+from sklearn.decomposition import SparsePCA
 import pickle
 
 input_dir = "Input/DA/"
@@ -28,6 +29,38 @@ input_data_dir = input_dir + "Data/"
 
 output_dir = "Output/DA/"
 output_metrics_dir = output_dir + "Metrics/"
+output_model_dir = output_dir + "Model/"
+
+pca_hyperparameters = {
+	"n_components": [2, 4, 8, 16]
+}
+
+nodr_hyperparameters = {
+	"thresholding": ["min", "mean", "median", "max"]
+}
+
+ae_hyperparameters = {
+	"n_components": [2, 4, 8, 16],
+	"n_hidden_neurons": [32, 64, 128, 256],
+	"optimizer": ["adam", "rmsprop", "SGD"],
+	"batch_size": [8, 16, 32, 64],
+	"epochs": [100, 250, 500]
+}
+
+spca_hyperparameters = {
+	"n_components": [2, 4, 8, 16],
+	"ridge_alpha": [0.01, 0.1, 0.25, 0.5, 0.75, 1.00],
+	"alpha": [0.1, 0.5, 1, 2, 3]
+}
+
+kpca_hyperparameters = {
+	"n_components": [2, 4, 8, 16],
+	"kernel": ["poly", "rbf", "sigmoid"],
+	"gamma": [0.01, 0.1, 0.25],
+	"alpha": [0.01, 0.1, 0.25, 0.5, 0.75, 1.0],
+	"degree": [3, 4, 5, 6]
+}
+
 
 
 def read_data():
@@ -38,14 +71,97 @@ def read_data():
 
 	return training_set, validation_set, test_set
 
+def train_kpca(training_set, validation_set, n_components, kernel, gamma, degree, alpha):
+
+	model = None
+	threshold=0.0
+	training_set_np = training_set.to_numpy()
+	training_set_np = training_set_np.astype('float32')
+	validation_set_np = validation_set.to_numpy()
+	validation_set_np = validation_set_np.astype('float32')
+	if n_components > len(training_set_np):
+		n_components = len(training_set_np)
+
+	model = KernelPCA(n_components=n_components, kernel=kernel, gamma=gamma, degree=degree, alpha=alpha, fit_inverse_transform=True)
+	model.fit(training_set_np)
+	compressed_validation_set_np = model.transform(validation_set_np)
+	reconstructed_validation_set_np = model.inverse_transform(compressed_validation_set_np)
+	threshold = mean_squared_error(validation_set_np, reconstructed_validation_set_np)
+
+	return model, threshold
+
+def train_pca(training_set, validation_set, n_components):
+	model = None
+	threshold=0.0
+	training_set_np = training_set.to_numpy()
+	training_set_np = training_set_np.astype('float32')
+	validation_set_np = validation_set.to_numpy()
+	validation_set_np = validation_set_np.astype('float32')
+	if n_components > len(training_set_np):
+		n_components = len(training_set_np)
+	model = PCA(n_components=n_components)
+	model.fit(training_set_np)
+	compressed_validation_set_np = model.transform(validation_set_np)
+	reconstructed_validation_set_np = model.inverse_transform(compressed_validation_set_np)
+	threshold = mean_squared_error(validation_set_np, reconstructed_validation_set_np)
+
+	return model, threshold
+
+def train_ae(training_set, validation_set, n_components, n_hidden_neurons, optimizer, batch_size, epochs):
+	model = None
+	threshold=0.0
+	training_set_np = training_set.to_numpy()
+	training_set_np = training_set_np.astype('float32')
+	validation_set_np = validation_set.to_numpy()
+	validation_set_np = validation_set_np.astype('float32')
+	model = autoencoder(n_hidden_neurons, n_components, len(list(training_set.columns)), optimizer)
+	model.fit(training_set_np,training_set_np, epochs=epochs, batch_size=batch_size, shuffle=True, verbose=1)
+	reconstructed_validation_set_np = model.predict(validation_set_np)
+	threshold = mean_squared_error(validation_set_np, reconstructed_validation_set_np)
+	return model, threshold
+
+def train_spca(training_set, validation_set, n_components, ridge_alpha, alpha):
+
+	model = None
+	threshold=0.0
+	training_set_np = training_set.to_numpy()
+	training_set_np = training_set_np.astype('float32')
+	validation_set_np = validation_set.to_numpy()
+	validation_set_np = validation_set_np.astype('float32')
+	if n_components > len(training_set_np):
+		n_components = len(training_set_np)
+	model = SparsePCA(n_components = n_components, ridge_alpha = ridge_alpha, alpha = alpha)
+	model.fit(training_set_np)
+	compressed_validation_set_np = model.transform(validation_set_np)
+	reconstructed_validation_set_np = model.inverse_transform(compressed_validation_set_np)
+	threshold = mean_squared_error(validation_set_np, reconstructed_validation_set_np)
+
+	return model, threshold
+
+def train_nodr(training_set, validation_set, thresholding):
+	model = None
+	threshold = 0.0
+	training_set_np = training_set.to_numpy()
+	training_set_np = training_set_np.astype('float32')
+	validation_set_np = validation_set.to_numpy()
+	validation_set_np = validation_set_np.astype('float32')
+	if thresholding == "min":
+		threshold = min(validation_set["fitness"])
+	elif threshold == "mean":
+		threshold = sum(validation_set["fitness"])/len(validation_set["fitness"])
+	elif threshold == "median":
+		threshold = np.median(validation_set["fitness"])
+	elif threshold == "max":
+		threshold = max(validation_set["fitness"])
+		
+	return model, threshold	
+
 def train_model(training_set, validation_set, dr_type):
 	model = None
 	threshold = 0.0
 	training_set_np = training_set.to_numpy()
-	#training_set_np = np.delete(training_set_np, 0, 0)
 	training_set_np = training_set_np.astype('float32')
 	validation_set_np = validation_set.to_numpy()
-	#validation_set_np = np.delete(validation_set_np, 0, 0)
 	validation_set_np = validation_set_np.astype('float32')
 	
 	if int(len(list(training_set.columns))/4) < len(training_set_np):
@@ -59,30 +175,33 @@ def train_model(training_set, validation_set, dr_type):
 		compressed_validation_set_np = model.transform(validation_set_np)
 		reconstructed_validation_set_np = model.inverse_transform(compressed_validation_set_np)
 		threshold = mean_squared_error(validation_set_np, reconstructed_validation_set_np)
+
 	elif dr_type == "KPCA":
 		model = KernelPCA(n_components=n_components, kernel='rbf', gamma=0.1, alpha=0.01, fit_inverse_transform=True)
 		model.fit(training_set_np)
 		compressed_validation_set_np = model.transform(validation_set_np)
 		reconstructed_validation_set_np = model.inverse_transform(compressed_validation_set_np)
 		threshold = mean_squared_error(validation_set_np, reconstructed_validation_set_np)
+		
 	elif dr_type == "AE":
 		model = autoencoder(int(len(list(training_set.columns))/2), int(len(list(training_set.columns))/4), len(list(training_set.columns)))
-		model.fit(training_set_np,training_set_np,epochs=250,shuffle=True,verbose=1)
+		model.fit(training_set_np,training_set_np,epochs=500,shuffle=True,verbose=1)
 		reconstructed_validation_set_np = model.predict(validation_set_np)
 		threshold = mean_squared_error(validation_set_np, reconstructed_validation_set_np)
+		
 	elif dr_type == "NO_DR":
 		threshold = min(validation_set["fitness"])
 
 	return model, threshold
 	
-def autoencoder(hidden_neurons, latent_code_dimension, input_dimension):
+def autoencoder(hidden_neurons, latent_code_dimension, input_dimension, optimizer):
 	input_layer = Input(shape=(input_dimension,))
 	encoder = Dense(hidden_neurons,activation="relu")(input_layer)
 	code = Dense(latent_code_dimension)(encoder)
 	decoder = Dense(hidden_neurons,activation="relu")(code)
 	output_layer = Dense(input_dimension,activation="linear")(decoder)
 	model = Model(inputs=[input_layer],outputs=[output_layer])
-	model.compile(optimizer="adam",loss="mse")
+	model.compile(optimizer=optimizer,loss="mse")
 	return model	
 
 def classify_diagnoses(model, threshold, test_set, dr_type):
@@ -91,11 +210,13 @@ def classify_diagnoses(model, threshold, test_set, dr_type):
 	test_labels = list(test_set["Label"])
 	if dr_type != "NO_DR":
 		test_set_no_labels_np = test_set.drop(["Label"], axis=1).to_numpy()
-		#test_set_no_labels_np = np.delete(test_set_no_labels_np, 0, 0)
 		if dr_type == "PCA":
 			compressed_test_set_np = model.transform(test_set_no_labels_np)
 			reconstructed_test_set_np = model.inverse_transform(compressed_test_set_np)
 		elif dr_type == "KPCA":
+			compressed_test_set_np = model.transform(test_set_no_labels_np)
+			reconstructed_test_set_np = model.inverse_transform(compressed_test_set_np)
+		elif dr_type == "SPCA":
 			compressed_test_set_np = model.transform(test_set_no_labels_np)
 			reconstructed_test_set_np = model.inverse_transform(compressed_test_set_np)
 		elif dr_type == "AE":
@@ -153,6 +274,25 @@ def evaluate_performance_metrics(test_labels, predicted_labels):
 	
 	
 	return performance_metrics
+
+def write_model(model, threshold, dr_type):
+
+	if dr_type == "PCA" or dr_type == "KPCA" or dr_type == "SPCA":
+		pickle.dump(model, open(output_model_dir + dr_type + ".pkl", 'wb'))
+		file = open(output_model_dir + "threshold.txt", "w")
+		file.write(str(threshold))
+		file.close()
+	if dr_type == "AE":
+		model.save(output_model_dir + "AE.keras")
+		file = open(output_model_dir + "threshold.txt", "w")
+		file.write(str(threshold))
+		file.close()
+	if dr_type == "NO_DR":
+		file = open(output_model_dir + "threshold.txt", "w")
+		file.write(str(threshold))
+		file.close()
+
+	return None
 	
 def write_metrics(performance_metrics):
 
@@ -175,11 +315,94 @@ except IndexError:
 	sys.exit()
 
 training_set, validation_set, test_set = read_data()
+best_performing_model = None
+best_threshold = 0.0
+best_f1 = 0.0
+best_performance = None
 
-model, threshold = train_model(training_set, validation_set, dr_type)
-predicted_labels, test_labels = classify_diagnoses(model, threshold, test_set, dr_type)
-performance_metrics = evaluate_performance_metrics(test_labels, predicted_labels)
-write_metrics(performance_metrics)
+if dr_type == "PCA":
+	for n_components in pca_hyperparameters["n_components"]:
+		try:
+			model, threshold = train_pca(training_set, validation_set, n_components)
+			
+			predicted_labels, test_labels = classify_diagnoses(model, threshold, test_set, dr_type)
+			performance_metrics = evaluate_performance_metrics(test_labels, predicted_labels)
+			if performance_metrics["f1"] > best_f1:
+				best_f1 = performance_metrics["f1"]
+				best_performance = performance_metrics.copy()
+				best_performing_model = model
+				best_threshold = threshold
+		except:
+			continue
+
+if dr_type == "KPCA":
+	for n_components in kpca_hyperparameters["n_components"]:
+		for kernel in kpca_hyperparameters["kernel"]:
+			for gamma in kpca_hyperparameters["gamma"]:
+				for degree in kpca_hyperparameters["degree"]:
+					for alpha in kpca_hyperparameters["alpha"]:
+						try:
+							model, threshold = train_kpca(training_set, validation_set, n_components, kernel, gamma, degree, alpha)
+							predicted_labels, test_labels = classify_diagnoses(model, threshold, test_set, dr_type)
+							performance_metrics = evaluate_performance_metrics(test_labels, predicted_labels)
+							if performance_metrics["f1"] > best_f1:
+								best_f1 = performance_metrics["f1"]
+								best_performance = performance_metrics.copy()
+								best_performing_model = model
+								best_threshold = threshold
+						except:
+							continue
+
+if dr_type == "SPCA":
+	for n_components in spca_hyperparameters["n_components"]:
+		for ridge_alpha in spca_hyperparameters["ridge_alpha"]:
+			for alpha in spca_hyperparameters["alpha"]:
+				try:
+					model, threshold = train_spca(training_set, validation_set, n_components, ridge_alpha, alpha)
+					predicted_labels, test_labels = classify_diagnoses(model, threshold, test_set, dr_type)
+					performance_metrics = evaluate_performance_metrics(test_labels, predicted_labels)
+					if performance_metrics["f1"] > best_f1:
+						best_f1 = performance_metrics["f1"]
+						best_performance = performance_metrics.copy()
+						best_performing_model = model
+						best_threshold = threshold
+				except:
+					continue
+
+if dr_type == "AE":
+	for n_components in ae_hyperparameters["n_components"]:
+		for n_hidden_neurons in ae_hyperparameters["n_hidden_neurons"]:
+			for optimizer in ae_hyperparameters["optimizer"]:
+				for batch_size in ae_hyperparameters["batch_size"]:
+					for epochs in ae_hyperparameters["epochs"]:
+						try:
+							model, threshold = train_ae(training_set, validation_set, n_components, n_hidden_neurons, optimizer, batch_size, epochs)
+							predicted_labels, test_labels = classify_diagnoses(model, threshold, test_set, dr_type)
+							performance_metrics = evaluate_performance_metrics(test_labels, predicted_labels)
+							if performance_metrics["f1"] > best_f1:
+								best_f1 = performance_metrics["f1"]
+								best_performance = performance_metrics.copy()
+								best_performing_model = model
+								best_threshold = threshold
+						except:
+							continue
+
+if dr_type == "NO_DR":
+	for thresholding in nodr_hyperparameters["thresholding"]:
+		try:
+			model, threshold = train_nodr(training_set, validation_set, thresholding)
+			predicted_labels, test_labels = classify_diagnoses(model, threshold, test_set, dr_type)
+			performance_metrics = evaluate_performance_metrics(test_labels, predicted_labels)
+			if performance_metrics["f1"] > best_f1:
+				best_f1 = performance_metrics["f1"]
+				best_performance = performance_metrics.copy()
+				best_performing_model = model
+				best_threshold = threshold
+		except:
+			continue
+	
+write_model(best_performing_model, best_threshold, dr_type)
+write_metrics(best_performance)
 	
 	
 	

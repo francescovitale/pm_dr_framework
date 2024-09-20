@@ -5,24 +5,29 @@
 :: test_percentage=[0,1]
 :: validation_percentage=[0,1]
 :: pm_fe_techniques=[alignment_based_cc,token_based_cc,directly_follows,n_grams]
-:: dr_techniques=[PCA,KPCA,AE]
+:: dr_techniques=[SPCA,PCA,KPCA,AE,NO_DR]
 :: nb_pm_fe_techniques=[alignment_based_cc,token_based_cc]
 
 set n_reps=1
-set datasets=ERTMS
+set datasets=PDC2021
 set n_traces_per_log=5
 set test_percentage=0.25
 set validation_percentage=0.2
 
 :: Parameters of non-baseline techniques
-set pm_fe_techniques=alignment_based_cc token_based_cc directly_follows n_grams
-set dr_techniques=PCA KPCA AE
-
+set pm_fe_techniques=
+set dr_techniques=
+ 
 
 :: Parameters of baseline techniques
-set nb_pm_fe_techniques=alignment_based_cc token_based_cc
+set nb_pm_fe_techniques=token_based_cc
 
-call clean_environment
+del /F /Q Results\*
+for /D %%p IN ("Results\*") DO (
+	del /s /f /q %%p\*.*
+	for /f %%f in ('dir /ad /b %%p') do rd /s /q %%p\%%f
+	rmdir "%%p" /s /q
+)
 
 for %%s in (%datasets%) do (
 	
@@ -47,6 +52,8 @@ for %%s in (%datasets%) do (
 					for /f %%f in ('dir /ad /b %%p') do rd /s /q %%p\%%f
 				)
 				del /F /Q Input\DA\Data\*
+				del /F /Q Input\AE\Data\*
+				del /F /Q Input\AE\Model\*
 				
 				for /D %%p IN ("Output\PP\EventLogs\*") DO (
 					del /s /f /q %%p\*.*
@@ -54,6 +61,8 @@ for %%s in (%datasets%) do (
 				)
 				del /F /Q Output\PF\Data\*
 				del /F /Q Output\DA\Metrics\*
+				del /F /Q Output\DA\Model\*
+				del /F /Q Output\AE\*
 				
 				python preprocessing.py %n_traces_per_log% %validation_percentage% %test_percentage%
 				
@@ -64,12 +73,17 @@ for %%s in (%datasets%) do (
 				python pm_fe.py %%f
 				
 				copy Output\PF\Data\* Input\DA\Data
+				copy Output\PF\Data\Test.csv Input\AE\Data
 				
 				python dr_ad.py %%d
 				
+				copy Output\DA\Model\* Input\AE\Model
 				copy Output\DA\Metrics\Metrics.txt Results\%%s\%%f\%%d
 				ren Results\%%s\%%f\%%d\Metrics.txt Metrics_%%x.txt
-				
+			
+				python ad_exp.py %%d
+				copy Output\AE\* Results\%%s\%%f\%%d
+				)
 			)
 		)
 	)
