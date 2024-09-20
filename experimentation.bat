@@ -9,18 +9,14 @@
 :: nb_pm_fe_techniques=[alignment_based_cc,token_based_cc]
 
 set n_reps=1
-<<<<<<< HEAD
 set datasets=PDC2021
-=======
-set datasets=PDC2020 PDC2021 ERTMS
->>>>>>> c8a9126a57d8ba7d0497681c63adfd555fc8d4ea
 set n_traces_per_log=5
 set test_percentage=0.25
 set validation_percentage=0.2
 
 :: Parameters of non-baseline techniques
-set pm_fe_techniques=
-set dr_techniques=
+set pm_fe_techniques=alignment_based_cc
+set dr_techniques=SPCA
  
 
 :: Parameters of baseline techniques
